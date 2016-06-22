@@ -1,0 +1,81 @@
+DEVELOPMENT ENVIRONMENT
+MAC OS, JAVA 6, ECLIPSE, MAVEN, SVN, GIT
+
+* svn co http://svn.apache.org/repos/asf/mahout/trunk   (Currently 0-8)
+* mv trunk mahout_trunk
+* In Eclipse click "import maven project" then choose "mahout_trunk" project
+	-We have each module as a java project now.
+	
+* Create a new maven(Apache Quick project template) project.
+* Configure Java Buildpath add mahout-submodules in classpath.
+* Create a directory for all data files like /usr/local/mahout-data
+
+(Or just add libraries of mahout to build path "jars under Mahout_HOME and Mahout_home/lib")
+
+---Prod Env----
+*Download : http://www.globalish.com/am/mahout/0.7/mahout-distribution-0.7.tar.gz
+*extract under: /usr/local/ or /usr/share
+*chmod -Rfv 755 mahout-distribution-0.7, chown jak:jak
+*add /etc/bashrc 
+alias ll='ls -ali'
+
+PATH=$PATH:$HOME/.rvm/bin # Add RVM to PATH for scripting
+export M2_HOME=/usr/local/apache-maven-3.0.4/
+export M2=$M2_HOME/bin
+export MAVEN_OPTS="-Xms256m -Xmx512m"
+
+export JAVA_HOME=/System/Library/Java/JavaVirtualMachines/1.6.0.jdk/Contents/Home/
+export SCALA_HOME=/Users/jak/scala-2.10.0-M6
+export HADOOP_HOME=/usr/local/hadoop-0.20.204.0/
+export HADOOP_OPT="Djava.security.krb5.realm=OX.AC.UK -Djava.security.krb5.kdc=kdc0.ox.ac.uk:kdc1.ox.ac.uk"
+export MAHOUT_HOME=/usr/local/mahout-distribution-0.7/
+#export MAHOUT_HOME=/usr/local/mahout_trunk/
+export PATH=$PATH:$M2:$HADOOP_HOME/bin:$MAHOUT_HOME/bin:$SCALA_HOME/bin:JAVA_HOME/bin
+
+--Check Hadoop
+stop-all.sh
+sudo rm -Rfv /tmp/*
+hadoop namenode -format
+http://localhost:50070/dfshealth.jsp
+---
+Test installment with :
+https://cwiki.apache.org/confluence/display/MAHOUT/Clustering+of+synthetic+control+data
+* wget http://archive.ics.uci.edu/ml/databases/synthetic_control/synthetic_control.data
+* hadoop fs -mkdir testdata
+* hadoop fs -put ~/Downloads/synthetic_control.data testdata
+* hadoop fs -lsr
+
+
+-------LDA-------
+Following scripts will be implemented in Java.
+
+mahout seqdirectory --input /usr/local/mahout_data/raw_content --output /usr/local/mahout_data/seq
+
+mahout seq2sparse -i /usr/local/mahout_data/seq -o /usr/local/mahout_data/index -wt tf -seq -nr 3 --namedVector
+
+mahout rowid -i /usr/local/mahout_data/index/tf-vectors -o /usr/local/mahout_data/matrix
+
+--- Pass here starts---
+mv matrix/docIndex matrix-docIndex (hadoop fs -mv reuters-matrix/docIndex reuters-matrix-docIndex)
+
+mahout cvb -i /usr/local/mahout_data/matrix -o /usr/local/mahout_data_lda -k 50 -nt 100000 --maxIter 1 -dict /usr/local/mahout_data/index/dictionary.file-*  -mt /usr/local/mahout_data_lda_cvb_tm -dt /usr/local/mahout_data_lda_cvb_dt
+
+//(mahout cvb -i /usr/java/mahout_data/index/tf-vectors/ -o /usr/java/mahout_data/lda -k 50 -nt 100000 --maxIter 1000)
+
+//mahout ldatopics -i /home/tgi/Desktop/3/state-9/ -d /home/tgi/Desktop/2/dictionary.* -o /home/tgi/Desktop/4 --dictionaryType sequencefile
+--- Pass here ends
+
+mahout dirichlet -i /usr/local/mahout_data/index/tf-vectors -o /usr/local/mahout_data/i-dirichlet -k 20 -ow -x 20 -a0 2 -md org.apache.mahout.clustering.dirichlet.models.DistanceMeasureClusterDistribution -mp org.apache.mahout.math.DenseVector -dm org.apache.mahout.common.distance.CosineDistanceMeasure
+
+mahout clusterdump -i /usr/local/mahout_data/i-dirichlet/clusters-*-final -o /usr/local/mahout_data/i-dirichlet/clusterdump -d /usr/local/mahout_data/index/dictionary.file-0 -dt sequencefile -b 100 -n 20 -sp 0
+
+____
+Hadoop Part :  Pseudo-Distributed Operation
+http://hadoop.apache.org/common/docs/stable/single_node_setup.html
+
+
+
+ERROR: could only be replicated to 0 nodes, instead of 1
+http://wiki.apache.org/hadoop/HowToSetupYourDevelopmentEnvironment
+I was getting this error when putting data into the dfs. The solution is strange and probably inconsistent: I erased all temporary data along with the namenode, reformatted the namenode, started everything up, and visited my "cluster's" dfs health page (http://your_host:50070/dfshealth.jsp). The last step, visiting the health page, is the only way I can get around the error. Once I've visited the page, putting and getting files in and out of the dfs works great!
+
